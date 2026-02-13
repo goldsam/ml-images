@@ -1,0 +1,63 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build ml-devcontainer",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "build",
+                ".",
+                "-t",
+                "ml-devcontainer"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/ml-devcontainer"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Test ml-devcontainer",
+            "type": "shell",
+            "command": "docker",
+            "args": [
+                "run",
+                "--rm",
+                "-v",
+                "${workspaceFolder}/ml-devcontainer/smoke-test.sh:/tmp/smoke-test.sh:ro",
+                "ml-devcontainer",
+                "bash",
+                "/tmp/smoke-test.sh"
+            ],
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": [],
+            "dependsOn": [
+                "Build ml-devcontainer"
+            ]
+        },
+        {
+            "label": "Build and Test ml-devcontainer",
+            "dependsOn": [
+                "Build ml-devcontainer",
+                "Test ml-devcontainer"
+            ],
+            "dependsOrder": "sequence",
+            "problemMatcher": []
+        }
+    ]
+}

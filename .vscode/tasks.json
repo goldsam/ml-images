@@ -31,11 +31,14 @@
             "args": [
                 "run",
                 "--rm",
+                "--gpus",
+                "all",
                 "-v",
                 "${workspaceFolder}/ml-devcontainer/smoke-test.sh:/tmp/smoke-test.sh:ro",
                 "ml-devcontainer",
                 "bash",
-                "/tmp/smoke-test.sh"
+                "/tmp/smoke-test.sh",
+                "--test-gpu"
             ],
             "group": {
                 "kind": "test",

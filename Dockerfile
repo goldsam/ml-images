@@ -1,7 +1,7 @@
 #
 # CUDA base stage - triggers early pull to run in parallel with dotnet-builder
 #
-FROM nvidia/cuda:11.8.0-base-ubuntu22.04 AS cuda-base
+FROM nvidia/cuda:11.8.0-base-ubuntu22.04 AS python-cude-base
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -11,11 +11,34 @@ RUN apt-get update \
         libicu70 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m pip --no-cache-dir install torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA support - this is the largest layer, so we do it early to allow caching and parallel builds.
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked,id=pip-cache \
+    python3 -m pip --no-cache-dir install torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu118 \
+    && find /usr/local/lib/python*/site-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -name "*.pyc" -delete \
+    && find /usr/local/lib/python*/site-packages -name "*.pyo" -delete \
+    && find /usr/local/lib/python*/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+
+# Install ML/DS packages
+COPY requirements.txt /tmp/requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked,id=pip-cache \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements.txt \
+    && rm /tmp/requirements.txt \
+    # Smart cleanup: remove artifacts but preserve package metadata for pip
+    && find /usr/local/lib/python*/site-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -name "*.pyc" -delete \
+    && find /usr/local/lib/python*/site-packages -name "*.pyo" -delete \
+    && find /usr/local/lib/python*/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
+    && find /usr/local/lib/python*/site-packages -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+    # NOTE: .dist-info and .egg-info are preserved so pip can track installed packages
+    # This allows project-scoped packages to be installed without reinstalling base packages
 
 #
-# Docker tools builder - uses minimal base image
+# Docker tools download stage
 #
 FROM ubuntu:22.04 AS docker-builder
 
@@ -60,7 +83,7 @@ RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=dotnet-downloads 
 #
 # Final image
 #
-FROM cuda-base
+FROM python-cude-base
 
 # Copy Docker tools from builder stage
 COPY --from=docker-builder /usr/bin/docker /usr/bin/docker

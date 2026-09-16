@@ -9,7 +9,7 @@ variable "PLATFORMS"    { default = "linux/amd64" }
 
 # PyTorch build to install in ml-libs. This is the single source of CUDA in the
 # whole image graph. Set to "cpu" for a lean CPU-only variant.
-variable "TORCH_CUDA"     { default = "cu132" }
+variable "TORCH_CUDA"     { default = "cu126" }
 variable "TORCH_VERSION"  { default = "" }     # empty = latest for that CUDA build
 variable "DOTNET_CHANNEL" { default = "10.0" }
 
@@ -26,7 +26,7 @@ variable "CACHE_REGISTRY" { default = "${REGISTRY}" }
 
 # Deployment-branch CUDA base. Supplies CUDA+cuDNN as system libraries for
 # ONNX Runtime; unrelated to the pip-wheel CUDA that PyTorch brings.
-variable "CUDA_RUNTIME_IMAGE" { default = "nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04" }
+variable "CUDA_RUNTIME_IMAGE" { default = "nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04" }
 
 #
 # Functions
@@ -87,7 +87,7 @@ target "cuda-base" {
   tags       = image_tags("cuda-base")
   labels = {
     "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-cuda-base"
-    "org.opencontainers.image.description" = "CUDA 13 + cuDNN 9 runtime. The only source of CUDA in this repo."
+    "org.opencontainers.image.description" = "CUDA 12 + cuDNN 9 runtime. The only source of CUDA in this repo."
     "org.opencontainers.image.version"     = "${VERSION}"
     "org.opencontainers.image.source"      = "${GIT_REPO_URL}"
     "org.opencontainers.image.revision"    = "${GIT_REVISION}"

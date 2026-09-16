@@ -47,8 +47,10 @@ echo "[single CUDA stack]"
 WHEELS=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
          | grep -ciE '^(nvidia[-_]|cuda[-_]toolkit)' || true)
 [ "$WHEELS" -eq 0 ] || fail "$WHEELS nvidia-* pip packages present - CUDA is duplicated in site-packages"
-[ -e /usr/local/cuda/lib64/libcudart.so.13 ] || fail "system CUDA runtime missing"
-ok "CUDA is system-only ($(ls /usr/local/cuda/lib64/libcudart.so.13 >/dev/null && echo 'libcudart.so.13'), 0 nvidia wheels)"
+CUDART=$(ls /usr/local/cuda/lib64/libcudart.so.* 2>/dev/null | head -1)
+[ -n "$CUDART" ] || CUDART=$(ldconfig -p 2>/dev/null | grep -oE '/[^ ]*libcudart\.so\.[0-9]+' | head -1)
+[ -n "$CUDART" ] || fail "system CUDA runtime missing"
+ok "CUDA is system-only ($(basename "$CUDART"), 0 nvidia wheels)"
 
 # The whole design depends on torch resolving every symbol against system CUDA.
 echo "[torch links system CUDA]"
@@ -131,6 +133,25 @@ dotnet --version >/dev/null || fail ".NET SDK missing"
 jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
 ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh"
+
+# Projects must be able to make their own environment without reinstalling the
+# multi-GB CUDA stack. This only works if the image installs into the BASE
+# interpreter -- a venv cannot inherit another venv's site-packages.
+echo "[project venv can inherit the image stack]"
+TMPV=$(mktemp -d)
+python3 -m venv --system-site-packages "$TMPV/proj" 2>/dev/null || fail "venv creation failed"
+"$TMPV/proj/bin/python" -c 'import torch, onnxruntime' 2>/dev/null \
+    || fail "project venv cannot see the image's torch/onnxruntime"
+"$TMPV/proj/bin/python" -m pip install -q --disable-pip-version-check tabulate 2>/dev/null
+"$TMPV/proj/bin/python" -c 'import tabulate' 2>/dev/null || fail "project venv cannot install its own packages"
+python3 -c 'import importlib.util,sys; sys.exit(0 if importlib.util.find_spec("tabulate") is None else 1)' \
+    || fail "project install leaked into the image interpreter"
+rm -rf "$TMPV"
+ok "project venv inherits torch/ORT and installs its own deps in isolation"
+
+echo "[uv]"
+uv --version >/dev/null 2>&1 || fail "uv not installed"
+ok "uv $(uv --version | awk '{print $2}')"
 
 echo "[user]"
 [ "$(id -un)" = "vscode" ] || fail "expected to run as vscode, got $(id -un)"

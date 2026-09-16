@@ -53,13 +53,23 @@ def strip(metadata_path: str) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("site_packages_glob", nargs="?",
-                    default="/opt/venv/lib/python3.*/site-packages")
+    ap.add_argument("site_packages_glob", nargs="?", default=None,
+                    help="optional; by default torch is located via importlib.metadata")
     args = ap.parse_args()
 
     targets = []
-    for sp in glob.glob(args.site_packages_glob):
-        targets += glob.glob(os.path.join(sp, "torch-*.dist-info", "METADATA"))
+    # Ask the interpreter where torch actually is, rather than guessing a path.
+    try:
+        import importlib.metadata as md
+        dist = md.distribution("torch")
+        meta = os.path.join(str(dist._path), "METADATA")  # type: ignore[attr-defined]
+        if os.path.exists(meta):
+            targets.append(meta)
+    except Exception:
+        pass
+    if not targets and args.site_packages_glob:
+        for sp in glob.glob(args.site_packages_glob):
+            targets += glob.glob(os.path.join(sp, "torch-*.dist-info", "METADATA"))
 
     if not targets:
         print("unbundle-cuda: no torch dist-info found", file=sys.stderr)

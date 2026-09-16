@@ -2,35 +2,36 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build devcontainer image",
+            "label": "Build + test (GPU)",
+            "detail": "Build all images, smoke test, then export a model and run it in the runtime image. Requires the CUDA provider.",
             "type": "shell",
-            "command": "make",
-            "args": ["build", "devcontainer"],
+            "command": "./verify.sh",
+            "args": ["--gpu"],
             "options": { "cwd": "${workspaceFolder}" },
-            "group": { "kind": "build", "isDefault": true },
-            "presentation": { "reveal": "always", "panel": "new" },
+            "group": { "kind": "test", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
             "problemMatcher": []
         },
         {
-            "label": "Build all images",
+            "label": "Build + test (CPU)",
+            "detail": "Same pipeline, but allows ONNX Runtime to fall back to CPU.",
+            "type": "shell",
+            "command": "./verify.sh",
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": "test",
+            "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build images",
+            "detail": "Build all six images without running tests.",
             "type": "shell",
             "command": "make",
             "args": ["build", "all"],
             "options": { "cwd": "${workspaceFolder}" },
-            "group": "build",
-            "presentation": { "reveal": "always", "panel": "new" },
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "dedicated" },
             "problemMatcher": []
-        },
-        {
-            "label": "Smoke test devcontainer",
-            "type": "shell",
-            "command": "make",
-            "args": ["test"],
-            "options": { "cwd": "${workspaceFolder}" },
-            "group": { "kind": "test", "isDefault": true },
-            "presentation": { "reveal": "always", "panel": "new" },
-            "problemMatcher": [],
-            "dependsOn": ["Build devcontainer image"]
         }
     ]
 }

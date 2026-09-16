@@ -5,7 +5,7 @@
 # ever carries a second, private CUDA stack in site-packages.
 #
 # Deliberately NOT the -devel variant: no nvcc, no toolkit, no headers.
-ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04
+ARG CUDA_RUNTIME_IMAGE=nvidia/cuda:12.9.1-cudnn-runtime-ubuntu24.04
 FROM ${CUDA_RUNTIME_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive

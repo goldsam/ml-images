@@ -1,0 +1,4 @@
+# NOTE: torch/CUDA come from ml-libs and are pinned by /opt/torch-constraints.txt.
+azureml-core>=1.61
+azureml-mlflow>=1.62
+azure-storage-blob>=12.27

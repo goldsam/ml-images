@@ -1,0 +1,12 @@
+# NOTE: torch/CUDA come from ml-libs and are pinned by /opt/torch-constraints.txt.
+
+# Notebooks
+jupyterlab>=4.6
+jupyterlab_execute_time>=3.3
+ipykernel>=7.3
+ipython>=9.17
+ipywidgets>=8.1
+# Visualization
+matplotlib>=3.11
+# Code quality
+mypy>=2.3

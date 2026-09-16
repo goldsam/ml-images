@@ -2,65 +2,35 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build ml-devcontainer",
+            "label": "Build devcontainer image",
             "type": "shell",
-            "command": "docker",
-            "args": [
-                "build",
-                ".",
-                "-t",
-                "ml-devcontainer"
-            ],
-            "options": {
-                "cwd": "${workspaceFolder}/ml-devcontainer"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "new"
-            },
+            "command": "make",
+            "args": ["build", "devcontainer"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "new" },
             "problemMatcher": []
         },
         {
-            "label": "Test ml-devcontainer",
+            "label": "Build all images",
             "type": "shell",
-            "command": "docker",
-            "args": [
-                "run",
-                "--rm",
-                "--gpus",
-                "all",
-                "-v",
-                "${workspaceFolder}/ml-devcontainer/smoke-test.sh:/tmp/smoke-test.sh:ro",
-                "ml-devcontainer",
-                "bash",
-                "/tmp/smoke-test.sh",
-                "--test-gpu"
-            ],
-            "group": {
-                "kind": "test",
-                "isDefault": true
-            },
-            "presentation": {
-                "reveal": "always",
-                "panel": "new"
-            },
+            "command": "make",
+            "args": ["build", "all"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "new" },
+            "problemMatcher": []
+        },
+        {
+            "label": "Smoke test devcontainer",
+            "type": "shell",
+            "command": "make",
+            "args": ["test"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "group": { "kind": "test", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "new" },
             "problemMatcher": [],
-            "dependsOn": [
-                "Build ml-devcontainer"
-            ]
-        },
-        {
-            "label": "Build and Test ml-devcontainer",
-            "dependsOn": [
-                "Build ml-devcontainer",
-                "Test ml-devcontainer"
-            ],
-            "dependsOrder": "sequence",
-            "problemMatcher": []
+            "dependsOn": ["Build devcontainer image"]
         }
     ]
 }

@@ -1,0 +1,3 @@
+# NOTE: torch/CUDA come from ml-libs and are pinned by /opt/torch-constraints.txt.
+transformers>=5.17
+datasets>=5.0

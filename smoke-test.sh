@@ -1,136 +1,97 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# Smoke test for the devcontainer image.
+#
+#   ./smoke-test.sh --image ghcr.io/goldsam/ml-devcontainer:latest [--gpu]
+#
+# With --image, re-executes itself inside that image. Without, assumes it is
+# already running inside the container under test.
+set -euo pipefail
 
-# Parse arguments
+IMAGE=""
 TEST_GPU=false
-for arg in "$@"; do
-    case $arg in
-        --test-gpu)
-            TEST_GPU=true
-            shift
-            ;;
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --image)    IMAGE="${2:?--image needs a value}"; shift 2;;
+        --image=*)  IMAGE="${1#*=}"; shift;;
+        --gpu|--test-gpu) TEST_GPU=true; shift;;
+        -h|--help)  sed -n '2,8p' "$0"; exit 0;;
+        *)          echo "unknown argument: $1" >&2; exit 2;;
     esac
 done
 
-echo "=== Smoke Test for ml-devcontainer ==="
-echo ""
+if [ -n "$IMAGE" ]; then
+    RUN_ARGS=(--rm -v "$(realpath "$0")":/tmp/smoke-test.sh:ro --entrypoint bash)
+    $TEST_GPU && RUN_ARGS+=(--gpus all)
+    INNER=()
+    $TEST_GPU && INNER=(--gpu)
+    exec docker run "${RUN_ARGS[@]}" "$IMAGE" /tmp/smoke-test.sh "${INNER[@]}"
+fi
 
-# Test Python
-echo "Testing Python..."
-python3 --version
-if ! python3 -c "import sys; assert sys.version_info >= (3, 10)"; then
-    echo "ERROR: Python version check failed"
-    exit 1
-fi
-echo "✓ Python OK"
-echo ""
+fail() { echo "ERROR: $*" >&2; exit 1; }
+ok()   { echo "  OK: $*"; }
 
-# Test PyTorch
-echo "Testing PyTorch..."
-if ! python3 -c "import torch; print(f'PyTorch version: {torch.__version__}')"; then
-    echo "ERROR: PyTorch import failed"
-    exit 1
-fi
-if ! python3 -c "import torchvision; print(f'torchvision version: {torchvision.__version__}')"; then
-    echo "ERROR: torchvision import failed"
-    exit 1
-fi
-if ! python3 -c "import torchaudio; print(f'torchaudio version: {torchaudio.__version__}')"; then
-    echo "ERROR: torchaudio import failed"
-    exit 1
-fi
-echo "✓ PyTorch OK"
-echo ""
+echo "=== ml-devcontainer smoke test ==="
 
-# Test CUDA availability (optional, requires --test-gpu flag)
-if [ "$TEST_GPU" = true ]; then
-    echo "Testing CUDA integration..."
-    CUDA_TEST=$(python3 -c "import torch; print(torch.cuda.is_available())" 2>&1)
-    if [ "$CUDA_TEST" = "True" ]; then
-        CUDA_VERSION=$(python3 -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}, version: {torch.version.cuda}')")
-        echo "$CUDA_VERSION"
-        DEVICE_COUNT=$(python3 -c "import torch; print(f'GPU devices: {torch.cuda.device_count()}')")
-        echo "$DEVICE_COUNT"
-        echo "✓ CUDA integration OK"
-    elif [ "$CUDA_TEST" = "False" ]; then
-        echo "⚠ CUDA not available (no GPU or container not started with --gpus flag)"
-        echo "  To enable GPU: Run container with --gpus all flag"
-        echo "✓ CUDA test skipped (non-GPU mode)"
+echo "[python]"
+python3 -c 'import sys; assert sys.version_info >= (3,14), sys.version' || fail "python too old"
+ok "$(python3 --version)"
+
+echo "[torch]"
+python3 -c 'import torch; print(torch.__version__)' >/dev/null || fail "torch import failed"
+ok "torch $(python3 -c 'import torch; print(torch.__version__)')"
+
+# Regression guard: ml-libs used to install a CUDA stack implicitly (via
+# stable-baselines3 -> PyPI torch) and gpu-ml/azure-ml then installed a second,
+# different one on top. Both shipped. Assert there is exactly one.
+echo "[single CUDA stack]"
+CUDNN=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
+        | grep -ciE '^nvidia[-_]cudnn' || true)
+[ "$CUDNN" -le 1 ] || fail "found $CUDNN cudnn distributions - duplicate CUDA stack regression"
+MAJORS=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
+         | grep -oiE '^nvidia[-_][a-z0-9_-]*cu[0-9]+' | grep -oE 'cu[0-9]+$' | sort -u | tr '\n' ' ')
+[ "$(echo "$MAJORS" | wc -w)" -le 1 ] || fail "multiple CUDA majors present: $MAJORS"
+ok "one CUDA stack (${MAJORS:-none})"
+
+echo "[constraints pin]"
+[ -f /opt/torch-constraints.txt ] || fail "/opt/torch-constraints.txt missing"
+[ "${PIP_CONSTRAINT:-}" = "/opt/torch-constraints.txt" ] || fail "PIP_CONSTRAINT not set"
+ok "torch pinned via PIP_CONSTRAINT"
+
+if $TEST_GPU; then
+    echo "[cuda runtime]"
+    AVAIL=$(python3 -c 'import torch; print(torch.cuda.is_available())')
+    if [ "$AVAIL" = "True" ]; then
+        ok "CUDA $(python3 -c 'import torch; print(torch.version.cuda)'), $(python3 -c 'import torch; print(torch.cuda.device_count())') device(s)"
     else
-        echo "ERROR: CUDA availability check failed"
-        echo "$CUDA_TEST"
-        exit 1
+        echo "  WARN: no GPU visible (run with --gpus all on a GPU host)"
     fi
-    echo ""
-else
-    echo "Skipping CUDA integration test (use --test-gpu to enable)"
-    echo ""
 fi
 
-# Test ML/DS packages
-echo "Testing ML/DS packages..."
-if ! python3 -c "import pandas, numpy, scipy, sklearn, seaborn, plotly; print('All ML/DS packages imported successfully')"; then
-    echo "ERROR: ML/DS package import failed"
-    exit 1
-fi
-echo "✓ ML/DS packages OK"
-echo ""
+echo "[ml packages]"
+python3 -c 'import numpy, pandas, scipy, sklearn, pydantic, typer' || fail "core ML imports failed"
+python3 -c 'import gymnasium, stable_baselines3' || fail "RL imports failed"
+python3 -c 'import transformers, datasets' || fail "gpu-ml imports failed"
+python3 -c 'import matplotlib, mypy' || fail "dev tool imports failed"
+ok "core, RL, transformers, dev tools"
 
-# Test pip package metadata preservation  
-echo "Testing pip package metadata (no-op install verification)..."
-# Verify that pip can see package metadata using pip show
-if ! python3 -m pip show numpy > /dev/null 2>&1; then
-    echo "ERROR: pip cannot find numpy metadata"
-    exit 1
-fi
-if ! python3 -m pip show pandas > /dev/null 2>&1; then
-    echo "ERROR: pip cannot find pandas metadata"
-    exit 1
-fi
-if ! python3 -m pip show torch > /dev/null 2>&1; then
-    echo "ERROR: pip cannot find torch metadata"
-    exit 1
-fi
+echo "[pip metadata preserved]"
+for p in numpy pandas torch; do
+    python3 -m pip show "$p" >/dev/null 2>&1 || fail "pip cannot see $p metadata"
+done
+ok "pip can resolve installed packages"
 
-# Try installing an already-installed package - should be quick (no download)
-echo "Testing that reinstalling numpy shows 'Requirement already satisfied'..."
-PIP_OUTPUT=$(python3 -m pip install numpy 2>&1)
-if echo "$PIP_OUTPUT" | grep -q "Requirement already satisfied: numpy"; then
-    echo "✓ Package metadata preserved - no reinstall required"
-else
-    echo "WARNING: Unexpected pip output, but packages are installed"
-fi
-echo ""
+echo "[tooling]"
+docker --version >/dev/null || fail "docker CLI missing"
+docker buildx version >/dev/null || fail "buildx plugin missing"
+docker compose version >/dev/null || fail "compose plugin missing"
+dotnet --version >/dev/null || fail ".NET SDK missing"
+jupyter --version >/dev/null || fail "jupyter missing"
+gh --version >/dev/null || fail "gh missing"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh"
 
-# Test Docker CLI
-echo "Testing Docker CLI..."
-if ! docker --version; then
-    echo "ERROR: Docker CLI not found or not working"
-    exit 1
-fi
-echo "✓ Docker CLI OK"
-echo ""
+echo "[user]"
+[ "$(id -un)" = "vscode" ] || fail "expected to run as vscode, got $(id -un)"
+sudo -n true 2>/dev/null || fail "vscode lacks passwordless sudo"
+ok "running as vscode with sudo"
 
-# Test docker-compose plugin
-echo "Testing docker-compose plugin..."
-if ! docker compose version; then
-    echo "ERROR: docker-compose plugin not found or not working"
-    exit 1
-fi
-echo "✓ docker-compose plugin OK"
-echo ""
-
-# Test .NET SDK
-echo "Testing .NET SDK..."
-if ! dotnet --version; then
-    echo "ERROR: .NET SDK not found or not working"
-    exit 1
-fi
-if ! dotnet --list-sdks; then
-    echo "ERROR: .NET SDK list-sdks failed"
-    exit 1
-fi
-echo "✓ .NET SDK OK"
-echo ""
-
-echo "=== All smoke tests passed! ==="
+echo "=== all smoke tests passed ==="

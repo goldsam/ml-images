@@ -1,0 +1,24 @@
+# torch is installed in the Dockerfile with --no-deps against the system CUDA
+# and pinned by /opt/torch-constraints.txt. Never add torch or nvidia-* here.
+
+# Inference runtime. Installed WITHOUT its [cuda]/[cudnn] extras so it binds the
+# system CUDA rather than pulling its own copy.
+onnxruntime-gpu>=1.30
+onnx>=1.20
+onnxscript>=0.6
+
+# Core scientific computing
+numpy>=2.5
+pandas>=3.0
+scipy>=1.18
+scikit-learn>=1.9
+pydantic>=2.13
+typer>=0.27
+# RL frameworks
+gymnasium>=1.3
+stable-baselines3>=2.9
+# Transformers / datasets
+transformers>=5.17
+datasets>=5.0
+# Lightweight experiment tracking
+mlflow-skinny>=3.16

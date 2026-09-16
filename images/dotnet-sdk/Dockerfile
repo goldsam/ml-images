@@ -1,5 +1,5 @@
 # .NET SDK assets image. Not used directly -- devcontainer COPYs /opt/dotnet out of it.
-FROM base-image
+FROM cuda-base-image
 
 ARG DOTNET_CHANNEL=9.0
 

@@ -1,6 +1,7 @@
 # Design: single-CUDA image stack
 
-**Status:** proposed, awaiting approval. Nothing in this document has been built.
+**Status:** approved. Core assumption verified in a prototype; implementation in
+progress on branch `single-cuda-stack`.
 
 ## Intent
 
@@ -111,26 +112,76 @@ final image. Sizes are estimates, not measurements.
 
 | # | Decision | Proposal |
 |---|---|---|
-| 1 | Ubuntu 24.04 or 26.04 base | **24.04** — better-tested with .NET and CUDA; 26.04 is newer but less proven |
-| 2 | Python version | Whatever the base ships, unless a newer one is required. Dropping `python:3.14-slim` is a real loss |
+| 1 | Ubuntu 24.04 or 26.04 base | **24.04** — approved |
+| 2 | Python version | **3.14 via deadsnakes + venv.** Newest with both torch (cp314) and onnxruntime-gpu (cp314) wheels; 3.15 is ruled out by ORT shipping no cp315 wheel. 24.04 ships 3.12 natively, and marks it externally-managed, so a venv is required regardless |
 | 3 | `onnxruntime-gpu` Python package | Install **without** its `cuda`/`cudnn` extras so it uses system CUDA |
-| 4 | Keep `triton` | **Yes** in `devcontainer` — `torch.compile` and the kernel ecosystem depend on it (~0.9 GB) |
-| 5 | Keep `nccl` / `cusparselt` / `nvshmem` | Open — ~0.5 GB, only needed for multi-GPU and structured sparsity |
+| 4 | Keep `triton` | **Yes** — approved |
+| 5 | Keep `nccl` / `cusparselt` / `nvshmem` | **Yes** — approved. cuSPARSELt and NVSHMEM are required for torch to load at all (see Verification) |
 | 6 | `azure-ml` | Stays disabled |
 
-## Risks
+## Verification
 
-1. **Unverified: `torch --no-deps` against system CUDA 13.3.** This is the
-   assumption the whole design rests on. It must be tested before any of this is
-   built — install torch with `--no-deps` on the CUDA 13.3 base, confirm
-   `libtorch_cuda.so` has no unresolved shared-object dependencies, and confirm
-   `torch.cuda.is_available()` on a real GPU.
-2. **No GPU on the current build host,** so `torch.cuda.is_available()` cannot be
-   verified locally. Static linkage can be checked; actual kernel execution cannot.
-3. **ONNX Runtime and PyTorch may want different cuDNN majors.** Both currently
-   want cuDNN 9, but this couples two independent upgrade cadences.
-4. **Fallback if this fails:** keep the current two-root design and accept two
-   CUDA stacks, documenting that they are separate deliberately.
+The design rests on PyTorch linking the system CUDA instead of its own wheels.
+This was prototyped on `nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04` with
+Python 3.14 (deadsnakes) and `torch --no-deps`.
+
+**Result: it works, after supplying three libraries the base does not carry.**
+
+The ABI concern was unfounded — torch built for CUDA 13.2 resolves cleanly
+against the base's CUDA 13.3.1:
+
+```
+libcudart.so.13   => /usr/local/cuda/lib64/libcudart.so.13
+libcublas.so.13   => /usr/local/cuda/lib64/libcublas.so.13
+libcublasLt.so.13 => /usr/local/cuda/lib64/libcublasLt.so.13
+libcudnn.so.9     => /lib/x86_64-linux-gnu/libcudnn.so.9
+```
+
+Three libraries were missing, because `-cudnn-runtime` does not ship CUPTI and
+neither cuSPARSELt nor NVSHMEM are part of the CUDA image at all:
+
+| missing | supplied by | note |
+|---|---|---|
+| `libcupti.so.13` | `cuda-cupti-13-3` | CUPTI ships in `-devel`, not `-runtime` |
+| `libcusparseLt.so.0` | `libcusparselt0` | separate NVIDIA product |
+| `libnvshmem_host.so.3` | `nvshmem-cuda-13` | note: `libnvshmem3-cuda-13` does not exist |
+
+All three come from NVIDIA's apt repository, which the base image already
+configures. They add roughly 350 MB, replacing ~3.0 GB of pip wheels.
+
+With them installed:
+
+```
+unresolved deps in libtorch_cuda.so: 0
+torch 2.14.0+cu132  (built for CUDA 13.2, running on 13.3.1)
+cudnn: 92400
+ORT 1.30.0 providers: ['TensorrtExecutionProvider', 'CUDAExecutionProvider', 'CPUExecutionProvider']
+```
+
+PyTorch and ONNX Runtime both bind to the same system CUDA. This is the
+requirement that motivated the redesign.
+
+### Not yet verified
+
+- **Kernel execution on a real GPU.** The build host has no GPU, so
+  `torch.cuda.is_available()` and actual CUDA kernel dispatch are unverified.
+  Symbol resolution is necessary but not sufficient. Run
+  `./smoke/run.sh --gpu` on a GPU host.
+- **ONNX Runtime CUDA provider at session level.** ORT *lists* the provider;
+  creating a session on it has not been exercised.
+
+### Residual risks
+
+1. **Version coupling.** torch is built for CUDA 13.2 and runs on 13.3.1.
+   Forward compatibility across CUDA minors makes this work, but bumping either
+   torch or the base image now requires re-running the linkage check.
+2. **`--no-deps` is not how PyTorch ships.** `/opt/torch-constraints.txt` must
+   keep pip from re-adding the `nvidia-*` wheels; if that pin is lost, the
+   duplicate stack returns silently.
+3. **deadsnakes PPA** is a third-party dependency in the base of every image.
+   `uv python install` is the alternative if that becomes unacceptable.
+4. **Fallback.** If GPU testing fails, revert to the two-root design on `main`
+   and document the two CUDA stacks as deliberate.
 
 ## Out of scope
 

@@ -40,22 +40,64 @@ echo "[torch]"
 python3 -c 'import torch; print(torch.__version__)' >/dev/null || fail "torch import failed"
 ok "torch $(python3 -c 'import torch; print(torch.__version__)')"
 
-# Regression guard: ml-libs used to install a CUDA stack implicitly (via
-# stable-baselines3 -> PyPI torch) and gpu-ml/azure-ml then installed a second,
-# different one on top. Both shipped. Assert there is exactly one.
+# Regression guard. CUDA must come from the system only -- PyTorch is installed
+# with --no-deps precisely so it does not bring a private copy in site-packages.
+# If nvidia-* wheels reappear, the image has two CUDA stacks again.
 echo "[single CUDA stack]"
-CUDNN=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
-        | grep -ciE '^nvidia[-_]cudnn' || true)
-[ "$CUDNN" -le 1 ] || fail "found $CUDNN cudnn distributions - duplicate CUDA stack regression"
-MAJORS=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
-         | grep -oiE '^nvidia[-_][a-z0-9_-]*cu[0-9]+' | grep -oE 'cu[0-9]+$' | sort -u | tr '\n' ' ')
-[ "$(echo "$MAJORS" | wc -w)" -le 1 ] || fail "multiple CUDA majors present: $MAJORS"
-ok "one CUDA stack (${MAJORS:-none})"
+WHEELS=$(python3 -m pip list --disable-pip-version-check --format=freeze 2>/dev/null \
+         | grep -ciE '^(nvidia[-_]|cuda[-_]toolkit)' || true)
+[ "$WHEELS" -eq 0 ] || fail "$WHEELS nvidia-* pip packages present - CUDA is duplicated in site-packages"
+[ -e /usr/local/cuda/lib64/libcudart.so.13 ] || fail "system CUDA runtime missing"
+ok "CUDA is system-only ($(ls /usr/local/cuda/lib64/libcudart.so.13 >/dev/null && echo 'libcudart.so.13'), 0 nvidia wheels)"
 
-echo "[constraints pin]"
-[ -f /opt/torch-constraints.txt ] || fail "/opt/torch-constraints.txt missing"
-[ "${PIP_CONSTRAINT:-}" = "/opt/torch-constraints.txt" ] || fail "PIP_CONSTRAINT not set"
-ok "torch pinned via PIP_CONSTRAINT"
+# The whole design depends on torch resolving every symbol against system CUDA.
+echo "[torch links system CUDA]"
+TORCH_LIB=$(python3 -c 'import torch,os;print(os.path.join(os.path.dirname(torch.__file__),"lib","libtorch_cuda.so"))')
+if command -v ldd >/dev/null 2>&1 && [ -f "$TORCH_LIB" ]; then
+    MISSING=$(ldd "$TORCH_LIB" 2>/dev/null | grep -c "not found" || true)
+    [ "$MISSING" -eq 0 ] || fail "$MISSING unresolved libs in libtorch_cuda.so: $(ldd "$TORCH_LIB" | grep 'not found' | tr -s ' ')"
+    ok "libtorch_cuda.so fully resolved against system CUDA"
+else
+    echo "  SKIP: ldd unavailable"
+fi
+
+echo "[onnxruntime]"
+python3 -c '
+import onnxruntime as ort, sys
+p = ort.get_available_providers()
+print("  ORT", ort.__version__, "providers:", ", ".join(p))
+sys.exit(0 if "CUDAExecutionProvider" in p else 1)
+' || fail "ONNX Runtime does not offer CUDAExecutionProvider"
+ok "ONNX Runtime present with CUDA provider"
+
+# The guard is torch's metadata, not a constraints file: if torch still declares
+# Requires-Dist on the CUDA wheels, the next `pip install` reinstates the whole
+# duplicate stack. Assert the declaration is actually gone.
+echo "[torch metadata declares no CUDA wheels]"
+python3 - <<'PYEOF' || fail "torch still declares CUDA wheel dependencies"
+import importlib.metadata as md, re, sys
+reqs = md.distribution("torch").requires or []
+bad = [r for r in reqs
+       if re.match(r"^(nvidia[-_]|cuda[-_](toolkit|bindings|pathfinder))", r, re.I)]
+print("  torch Requires-Dist CUDA entries:", len(bad))
+for r in bad:
+    print("   ", r)
+sys.exit(1 if bad else 0)
+PYEOF
+ok "torch declares no CUDA wheel dependencies"
+
+# Prove the guard holds under the operation that used to break it.
+echo "[installing a torch-dependent package adds no CUDA wheels]"
+PLAN=$(python3 -m pip install --dry-run --quiet --disable-pip-version-check \
+        --report /dev/stdout "stable-baselines3" 2>/dev/null \
+       | python3 -c 'import json,sys
+try: d=json.load(sys.stdin)
+except Exception: print(""); raise SystemExit
+import re
+print(" ".join(p["metadata"]["name"] for p in d.get("install",[])
+      if re.match(r"^(nvidia[-_]|cuda[-_](toolkit|bindings|pathfinder))",p["metadata"]["name"],re.I)))' )
+[ -z "$PLAN" ] || fail "installing stable-baselines3 would pull CUDA wheels: $PLAN"
+ok "no CUDA wheels pulled by a torch-dependent install"
 
 if $TEST_GPU; then
     echo "[cuda runtime]"
@@ -72,6 +114,7 @@ python3 -c 'import numpy, pandas, scipy, sklearn, pydantic, typer' || fail "core
 python3 -c 'import gymnasium, stable_baselines3' || fail "RL imports failed"
 python3 -c 'import transformers, datasets' || fail "gpu-ml imports failed"
 python3 -c 'import matplotlib, mypy' || fail "dev tool imports failed"
+python3 -c 'import onnx, onnxscript' || fail "onnx export toolchain missing"
 ok "core, RL, transformers, dev tools"
 
 echo "[pip metadata preserved]"

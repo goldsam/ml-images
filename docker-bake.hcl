@@ -19,13 +19,14 @@ variable "GIT_REPO_URL" { default = "" }
 
 # Docker/buildx parameters
 variable "CONTEXT_BASE"   { default = "images" }
+variable "PYTHON_VERSION" { default = "3.14" }
 variable "CACHE_PATH"     { default = ".buildx-cache" }
 variable "CACHE_TYPE"     { default = "local" }
 variable "CACHE_REGISTRY" { default = "${REGISTRY}" }
 
 # Deployment-branch CUDA base. Supplies CUDA+cuDNN as system libraries for
 # ONNX Runtime; unrelated to the pip-wheel CUDA that PyTorch brings.
-variable "CUDA_RUNTIME_IMAGE" { default = "nvidia/cuda:13.3.1-cudnn-runtime-ubuntu26.04" }
+variable "CUDA_RUNTIME_IMAGE" { default = "nvidia/cuda:13.3.1-cudnn-runtime-ubuntu24.04" }
 
 #
 # Functions
@@ -70,71 +71,54 @@ group "runtime" { targets = ["dotnet-runtime"] }
 
 # Everything publishable. Used by CI.
 group "all" {
-  targets = [
-    # devcontainer branch
-    "base", "ml-libs", "gpu-ml", "dotnet-sdk", "docker-tools", "devcontainer",
-    # deployment branch
-    "cuda-runtime", "dotnet-runtime",
-  ]
+  targets = ["cuda-base", "libs", "devcontainer", "dotnet-sdk", "docker-tools", "dotnet-runtime"]
 }
 
-target "base" {
+target "cuda-base" {
   # split() so PLATFORMS="linux/amd64,linux/arm64" yields two platforms rather
   # than one malformed string.
   platforms  = split(",", PLATFORMS)
-  context    = "${CONTEXT_BASE}/base"
+  context    = "${CONTEXT_BASE}/cuda-base"
   dockerfile = "Dockerfile"
   pull       = true
-  cache-from = cache_from("base")
-  cache-to   = cache_to("base")
-  tags       = image_tags("base")
+  args       = { CUDA_RUNTIME_IMAGE = "${CUDA_RUNTIME_IMAGE}" }
+  cache-from = cache_from("cuda-base")
+  cache-to   = cache_to("cuda-base")
+  tags       = image_tags("cuda-base")
   labels = {
-    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-base"
-    "org.opencontainers.image.description" = "Common foundation: Python 3.14, CA certs, tini"
+    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-cuda-base"
+    "org.opencontainers.image.description" = "CUDA 13 + cuDNN 9 runtime. The only source of CUDA in this repo."
     "org.opencontainers.image.version"     = "${VERSION}"
     "org.opencontainers.image.source"      = "${GIT_REPO_URL}"
     "org.opencontainers.image.revision"    = "${GIT_REVISION}"
   }
 }
 
-target "ml-libs" {
-  inherits   = ["base"]
-  context    = "${CONTEXT_BASE}/ml-libs"
+target "libs" {
+  inherits   = ["cuda-base"]
+  context    = "${CONTEXT_BASE}/libs"
   dockerfile = "Dockerfile"
   args = {
-    TORCH_CUDA    = "${TORCH_CUDA}"
-    TORCH_VERSION = "${TORCH_VERSION}"
+    PYTHON_VERSION = "${PYTHON_VERSION}"
+    TORCH_CUDA     = "${TORCH_CUDA}"
+    TORCH_VERSION  = "${TORCH_VERSION}"
   }
-  contexts   = { base-image = "target:base" }
-  cache-from = cache_from("ml-libs")
-  cache-to   = cache_to("ml-libs")
-  tags       = image_tags("ml-libs")
+  contexts   = { cuda-base-image = "target:cuda-base" }
+  cache-from = cache_from("libs")
+  cache-to   = cache_to("libs")
+  tags       = image_tags("libs")
   labels = {
-    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-ml-libs"
-    "org.opencontainers.image.description" = "PyTorch (${TORCH_CUDA}) + scientific/RL stack. Sole source of CUDA."
-  }
-}
-
-target "gpu-ml" {
-  inherits   = ["base"]
-  context    = "${CONTEXT_BASE}/gpu-ml"
-  dockerfile = "Dockerfile"
-  contexts   = { ml-libs-image = "target:ml-libs" }
-  cache-from = cache_from("gpu-ml")
-  cache-to   = cache_to("gpu-ml")
-  tags       = image_tags("gpu-ml")
-  labels = {
-    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-gpu-ml"
-    "org.opencontainers.image.description" = "GPU ML training image (transformers, datasets)"
+    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-libs"
+    "org.opencontainers.image.description" = "PyTorch (${TORCH_CUDA}, --no-deps) + ONNX Runtime on system CUDA, plus the scientific/RL stack"
   }
 }
 
 target "dotnet-sdk" {
-  inherits   = ["base"]
+  inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/dotnet-sdk"
   dockerfile = "Dockerfile"
   args       = { DOTNET_CHANNEL = "${DOTNET_CHANNEL}" }
-  contexts   = { base-image = "target:base" }
+  contexts   = { cuda-base-image = "target:cuda-base" }
   cache-from = cache_from("dotnet-sdk")
   cache-to   = cache_to("dotnet-sdk")
   tags       = image_tags("dotnet-sdk")
@@ -145,10 +129,10 @@ target "dotnet-sdk" {
 }
 
 target "docker-tools" {
-  inherits   = ["base"]
+  inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/docker-tools"
   dockerfile = "Dockerfile"
-  contexts   = { base-image = "target:base" }
+  contexts   = { cuda-base-image = "target:cuda-base" }
   cache-from = cache_from("docker-tools")
   cache-to   = cache_to("docker-tools")
   tags       = image_tags("docker-tools")
@@ -159,11 +143,11 @@ target "docker-tools" {
 }
 
 target "devcontainer" {
-  inherits   = ["base"]
+  inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/devcontainer"
   dockerfile = "Dockerfile"
   contexts = {
-    gpu-ml-image       = "target:gpu-ml"
+    libs-image         = "target:libs"
     docker-tools-image = "target:docker-tools"
     dotnet-sdk-image   = "target:dotnet-sdk"
   }
@@ -176,34 +160,12 @@ target "devcontainer" {
   }
 }
 
-#
-# Deployment branch
-#
-
-target "cuda-runtime" {
-  platforms  = split(",", PLATFORMS)
-  context    = "${CONTEXT_BASE}/cuda-runtime"
-  dockerfile = "Dockerfile"
-  pull       = true
-  args       = { CUDA_RUNTIME_IMAGE = "${CUDA_RUNTIME_IMAGE}" }
-  cache-from = cache_from("cuda-runtime")
-  cache-to   = cache_to("cuda-runtime")
-  tags       = image_tags("cuda-runtime")
-  labels = {
-    "org.opencontainers.image.title"       = "${IMAGE_PREFIX}-cuda-runtime"
-    "org.opencontainers.image.description" = "CUDA + cuDNN runtime libraries (deployment branch root)"
-    "org.opencontainers.image.version"     = "${VERSION}"
-    "org.opencontainers.image.source"      = "${GIT_REPO_URL}"
-    "org.opencontainers.image.revision"    = "${GIT_REVISION}"
-  }
-}
-
 target "dotnet-runtime" {
-  inherits   = ["cuda-runtime"]
+  inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/dotnet-runtime"
   dockerfile = "Dockerfile"
   args       = { DOTNET_CHANNEL = "${DOTNET_CHANNEL}" }
-  contexts   = { cuda-runtime-image = "target:cuda-runtime" }
+  contexts   = { cuda-base-image = "target:cuda-base" }
   cache-from = cache_from("dotnet-runtime")
   cache-to   = cache_to("dotnet-runtime")
   tags       = image_tags("dotnet-runtime")
@@ -217,10 +179,10 @@ target "dotnet-runtime" {
 # Re-enable by uncommenting this target and adding "azure-ml" to group "all".
 #
 # target "azure-ml" {
-#   inherits   = ["base"]
+#   inherits   = ["cuda-base"]
 #   context    = "${CONTEXT_BASE}/azure-ml"
 #   dockerfile = "Dockerfile"
-#   contexts   = { ml-libs-image = "target:ml-libs" }
+#   contexts   = { libs-image = "target:libs" }
 #   cache-from = cache_from("azure-ml")
 #   cache-to   = cache_to("azure-ml")
 #   tags       = image_tags("azure-ml")

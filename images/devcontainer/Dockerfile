@@ -2,8 +2,9 @@
 FROM docker-tools-image AS docker-tools
 FROM dotnet-sdk-image  AS dotnet-sdk
 
-# Full development environment: GPU ML stack + .NET + Docker CLI + Jupyter.
-FROM gpu-ml-image
+# Full development environment: the ML/ONNX stack plus .NET, Docker CLI and
+# Jupyter. Everything needed to build AND test an ONNX-targeting C# app.
+FROM libs-image
 
 USER root
 
@@ -17,6 +18,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache \
     set -ex \
     && apt-get update \
     && apt-get install -y --no-install-recommends sudo \
+    # Ubuntu 24.04 ships a default `ubuntu` user at UID/GID 1000, which Debian
+    # did not. Free the id before claiming it for vscode.
+    && if existing=$(getent passwd ${UID} | cut -d: -f1) && [ -n "$existing" ]; then \
+         userdel -r "$existing" 2>/dev/null || userdel "$existing"; \
+       fi \
+    && if existing=$(getent group ${GID} | cut -d: -f1) && [ -n "$existing" ]; then \
+         groupdel "$existing" 2>/dev/null || true; \
+       fi \
     && groupadd -g ${GID} vscode \
     && useradd -m -u ${UID} -g ${GID} -s /bin/bash vscode \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
@@ -83,13 +92,13 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked,id=pip-wheels-dev 
     && pip install --disable-pip-version-check --no-compile --prefer-binary \
         -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt \
-    && find /usr/local/lib/python*/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
-    && find /usr/local/lib/python*/site-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
-    && find /usr/local/lib/python*/site-packages -name "*.pyc" -delete \
-    && find /usr/local/lib/python*/site-packages -name "*.pyo" -delete \
-    && find /usr/local/lib/python*/site-packages -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
-    && find /usr/local/lib/python*/site-packages -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
-    && find /usr/local/lib/python*/site-packages -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
+    && find /opt/venv/lib/python*/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv/lib/python*/site-packages -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv/lib/python*/site-packages -name "*.pyc" -delete \
+    && find /opt/venv/lib/python*/site-packages -name "*.pyo" -delete \
+    && find /opt/venv/lib/python*/site-packages -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv/lib/python*/site-packages -type d -name "docs" -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv/lib/python*/site-packages -type d -name "examples" -exec rm -rf {} + 2>/dev/null || true
 
 RUN chown -R vscode:vscode /workspace
 

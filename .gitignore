@@ -12,3 +12,9 @@ Thumbs.db
 # Local overrides
 .env
 *.log
+
+# Smoke test + .NET build artifacts. The ORT native libraries alone exceed
+# GitHub's 100MB file limit, so these must never be committed.
+smoke/.out/
+[Bb]in/
+[Oo]bj/

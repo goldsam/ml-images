@@ -1,15 +1,31 @@
 name: Build Images
 
+# CI builds and publishes only. It does not run the test suite: GitHub runners
+# have no GPU, so a pass here would prove nothing about the CUDA execution
+# provider -- ONNX Runtime would silently fall back to CPU and go green even if
+# the GPU path were broken. Verification happens on a GPU host:
+#
+#     ./verify.sh --gpu
+#
+# That is the gate before merging a version bump, not this workflow.
+
 on:
   push:
-    branches: [main]
-    paths: ['images/**', 'docker-bake.hcl', '.github/workflows/build-images.yml']
+    # Release branches are release/<variant>, e.g. release/cuda-12, and publish
+    # the variant as the image tag (:cuda-12). A future release/cuda-14 needs no
+    # workflow edit. Git tags matching cuda-* build too, which is how a variant
+    # gets pinned to an immutable image tag.
+    branches: [main, 'release/**']
+    tags: ['cuda-*']
+    # No paths filter on push: a tag usually points at a commit that is already
+    # pushed, so it has no changed files and a paths filter would silently skip
+    # the run. Pull requests keep the filter, where the diff is well defined.
   pull_request:
-    paths: ['images/**', 'docker-bake.hcl', '.github/workflows/build-images.yml']
+    paths: ['images/**', 'docker-bake.hcl', 'smoke-test.sh', 'smoke/**', 'verify.sh', '.github/workflows/build-images.yml']
   workflow_dispatch:
     inputs:
       bake_target:
-        description: 'Bake target (base, ml-libs, gpu-ml, dotnet-sdk, docker-tools, devcontainer, all). Empty = all.'
+        description: 'Bake target (cuda-base, libs, devcontainer, dotnet-sdk, docker-tools, dotnet-runtime, all). Empty = all.'
         required: false
         type: string
         default: ''
@@ -28,13 +44,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # The CUDA stack is multi-GB; the stock runner does not have room for it
+      # The CUDA stack is multi-GB; the stock runner has no room for it
       # alongside the pre-installed toolchains.
       - name: Free disk space
         run: |
           docker system prune -af --volumes || true
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
           df -h
+
+      # The CUDA variant lives in the tag, not the image name, so cuda-12 and
+      # cuda-13 are siblings of one image rather than two separate repos.
+      #   main     -> :latest
+      #   cuda-12  -> :cuda-12
+      # GITHUB_REF_NAME is the branch name for a branch push and the tag name
+      # for a tag push. Release branches drop the release/ prefix, so
+      # release/cuda-12 publishes :cuda-12.
+      - name: Determine tag
+        id: tag
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            main)       version=latest ;;
+            release/*)  version="${GITHUB_REF_NAME#release/}" ;;
+            cuda-*)     version="${GITHUB_REF_NAME}" ;;
+            *)          version="$(echo "${GITHUB_REF_NAME}" | tr '/' '-')" ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "ref ${GITHUB_REF_NAME} -> publishing as :$version"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -52,20 +87,23 @@ jobs:
         with:
           files: docker-bake.hcl
           targets: ${{ github.event.inputs.bake_target || 'all' }}
-          push: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
+          push: ${{ github.event_name != 'pull_request' }}
           load: ${{ github.event_name == 'pull_request' }}
         env:
-          # Cache mounts (--mount=type=cache) are not exported by any cache
-          # backend and the runner gets a fresh builder each time, so registry
-          # layer cache is what actually saves time here.
+          # Cache mounts are not exported by any cache backend and the runner
+          # gets a fresh builder each run, so registry layer cache is what
+          # actually saves time here.
           CACHE_TYPE: registry
           REGISTRY: ${{ env.REGISTRY }}
           IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
-          VERSION: latest
+          VERSION: ${{ steps.tag.outputs.version }}
           GIT_REVISION: ${{ github.sha }}
           GIT_REPO_URL: https://github.com/${{ github.repository }}
           BUILDKIT_PROGRESS: plain
 
-      - name: Smoke test devcontainer
-        if: github.event_name == 'pull_request'
-        run: ./smoke-test.sh --image ${{ env.REGISTRY }}${{ env.IMAGE_PREFIX }}-devcontainer:latest
+      - name: Published tags
+        if: github.event_name != 'pull_request'
+        run: |
+          for t in cuda-base libs devcontainer dotnet-sdk docker-tools dotnet-runtime; do
+            echo "  ${{ env.REGISTRY }}${{ env.IMAGE_PREFIX }}-$t:${{ steps.tag.outputs.version }}"
+          done

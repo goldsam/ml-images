@@ -4,7 +4,9 @@
 
 variable "REGISTRY"     { default = "ghcr.io/" }
 variable "IMAGE_PREFIX" { default = "goldsam/ml" }
-variable "VERSION"      { default = "latest" }
+# The CUDA variant lives in the tag: this branch publishes :cuda-12,
+# the cuda-13 branch publishes :cuda-13, main publishes :latest.
+variable "VERSION"      { default = "cuda-12" }
 variable "PLATFORMS"    { default = "linux/amd64" }
 
 # PyTorch build to install in ml-libs. This is the single source of CUDA in the

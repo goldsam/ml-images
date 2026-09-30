@@ -3,7 +3,7 @@
 #
 # Runtime only -- no SDK. The devcontainer carries the SDK; shipping both here
 # would duplicate the shared framework for no benefit.
-FROM cuda-runtime-image
+FROM cuda-base-image
 
 ARG DOTNET_CHANNEL=10.0
 

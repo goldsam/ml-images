@@ -1,0 +1,4 @@
+# torch comes from the image and is pinned by /opt/torch-constraints.txt.
+# Listed here only to document the dependency; do not pin a version.
+onnx
+onnxscript

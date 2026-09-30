@@ -34,7 +34,7 @@ buildx_env = CACHE_PATH=$(CACHE_PATH) CACHE_TYPE=$(CACHE_TYPE) \
              GIT_REVISION=$(GIT_REVISION) GIT_REPO_URL=$(GIT_REPO_URL) \
              $(foreach v,$(FORWARD),$(if $($(v)),$(v)=$($(v)),))
 
-.PHONY: help build push print test clean-cache
+.PHONY: help build push print test verify verify-gpu clean-cache
 .DEFAULT_GOAL := help
 
 $(CACHE_PATH):
@@ -53,6 +53,12 @@ push: $(CACHE_PATH) ## Build and push image(s)
 
 print: ## Print the resolved bake configuration
 	@$(buildx_env) docker buildx bake $(BUILDX_FLAGS) --print $(BAKE_TARGETS)
+
+verify: ## Build all images and run the full test pipeline
+	./verify.sh
+
+verify-gpu: ## Same, but require the GPU
+	./verify.sh --gpu
 
 # Ask bake for the devcontainer's actual tag rather than reconstructing it.
 test: ## Run the smoke test against a locally built devcontainer

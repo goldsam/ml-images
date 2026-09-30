@@ -2,35 +2,97 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build devcontainer image",
+            "label": "Build + test on GPU",
+            "detail": "Build all images, smoke test them, then export an ONNX model in the devcontainer and execute it in the runtime image. Requires the CUDA execution provider - a CPU fallback fails the run. This is the real gate; CI only builds and publishes.",
             "type": "shell",
-            "command": "make",
-            "args": ["build", "devcontainer"],
-            "options": { "cwd": "${workspaceFolder}" },
-            "group": { "kind": "build", "isDefault": true },
-            "presentation": { "reveal": "always", "panel": "new" },
+            "command": "./verify.sh",
+            "args": [
+                "--gpu"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "test",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
             "problemMatcher": []
         },
         {
-            "label": "Build all images",
+            "label": "Smoke test devcontainer on GPU",
+            "detail": "Image checks only (single CUDA stack, torch linkage, ORT providers, venv inheritance) against the already-built devcontainer. Skips the build and the end-to-end run.",
             "type": "shell",
-            "command": "make",
-            "args": ["build", "all"],
-            "options": { "cwd": "${workspaceFolder}" },
-            "group": "build",
-            "presentation": { "reveal": "always", "panel": "new" },
+            "command": "./smoke-test.sh --image \"ghcr.io/goldsam/ml-devcontainer:$(./image-tag.sh)\" --gpu",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
             "problemMatcher": []
         },
         {
-            "label": "Smoke test devcontainer",
+            "label": "End-to-end on GPU",
+            "detail": "Export a model with PyTorch in the devcontainer, publish the C# consumer, run it under the runtime image on CUDA. Uses already-built images.",
+            "type": "shell",
+            "command": "./smoke/run.sh",
+            "args": [
+                "--gpu"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": "test",
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build images",
+            "detail": "Build all six images. No tests.",
             "type": "shell",
             "command": "make",
-            "args": ["test"],
-            "options": { "cwd": "${workspaceFolder}" },
-            "group": { "kind": "test", "isDefault": true },
-            "presentation": { "reveal": "always", "panel": "new" },
-            "problemMatcher": [],
-            "dependsOn": ["Build devcontainer image"]
+            "args": [
+                "build",
+                "all"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "nvidia-smi in devcontainer",
+            "detail": "Confirm the GPU is visible inside the built image - the first thing to check when the CUDA provider goes missing.",
+            "type": "shell",
+            "command": "docker run --rm --gpus all --entrypoint nvidia-smi \"ghcr.io/goldsam/ml-devcontainer:$(./image-tag.sh)\"",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": []
         }
     ]
 }

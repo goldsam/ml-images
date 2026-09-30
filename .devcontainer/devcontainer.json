@@ -2,7 +2,7 @@
 // from another project.
 {
   "name": "ml-devcontainer",
-  "image": "ghcr.io/goldsam/ml-devcontainer:latest",
+  "image": "ghcr.io/goldsam/ml-devcontainer:cuda-12",
   "remoteUser": "vscode",
   "workspaceFolder": "/workspace",
   "hostRequirements": {

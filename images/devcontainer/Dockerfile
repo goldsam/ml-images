@@ -2,8 +2,9 @@
 FROM docker-tools-image AS docker-tools
 FROM dotnet-sdk-image  AS dotnet-sdk
 
-# Full development environment: GPU ML stack + .NET + Docker CLI + Jupyter.
-FROM gpu-ml-image
+# Full development environment: the ML/ONNX stack plus .NET, Docker CLI and
+# Jupyter. Everything needed to build AND test an ONNX-targeting C# app.
+FROM libs-image
 
 USER root
 
@@ -17,6 +18,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache \
     set -ex \
     && apt-get update \
     && apt-get install -y --no-install-recommends sudo \
+    # Ubuntu 24.04 ships a default `ubuntu` user at UID/GID 1000, which Debian
+    # did not. Free the id before claiming it for vscode.
+    && if existing=$(getent passwd ${UID} | cut -d: -f1) && [ -n "$existing" ]; then \
+         userdel -r "$existing" 2>/dev/null || userdel "$existing"; \
+       fi \
+    && if existing=$(getent group ${GID} | cut -d: -f1) && [ -n "$existing" ]; then \
+         groupdel "$existing" 2>/dev/null || true; \
+       fi \
     && groupadd -g ${GID} vscode \
     && useradd -m -u ${UID} -g ${GID} -s /bin/bash vscode \
     && echo "vscode ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/vscode \
@@ -74,13 +83,35 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         jq
 
 #
+# Garage CLI -- S3-compatible object storage admin, replacing MinIO's `mc`.
+# Used to create buckets and S3 keys against a Garage server (e.g. the MLflow
+# artifact store), via `garage bucket create` / `garage key create`.
+#
+# A single static musl binary, so it needs no runtime dependencies. Garage
+# publishes no checksum alongside the download, so the digest below is pinned
+# from the bytes that were actually tested -- bump both together.
+#
+ARG GARAGE_VERSION=v2.4.1
+ARG GARAGE_SHA256=ae49f8de4aaee6b5ca305f7cbdccc8cd8a29b2804aac074649f18bfb83d0a2b6
+RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=garage-downloads \
+    set -ex \
+    && CACHED="/tmp/downloads/garage-${GARAGE_VERSION}" \
+    && if [ ! -f "$CACHED" ]; then \
+         curl -fsSL -o "$CACHED" \
+           "https://garagehq.deuxfleurs.fr/_releases/${GARAGE_VERSION}/x86_64-unknown-linux-musl/garage"; \
+       fi \
+    && echo "${GARAGE_SHA256}  ${CACHED}" | sha256sum -c - \
+    && install -m 0755 "$CACHED" /usr/local/bin/garage \
+    && garage --version
+
+#
 # Development-only Python packages (JupyterLab etc). Last layer: changes here
 # rebuild ~200MB, not the 3GB CUDA stack underneath.
 #
 COPY requirements.txt /tmp/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked,id=pip-wheels-dev \
     set -ex \
-    && pip install --disable-pip-version-check --no-compile --prefer-binary \
+    && python3 -m pip install --disable-pip-version-check --no-compile --prefer-binary \
         -r /tmp/requirements.txt \
     && rm /tmp/requirements.txt \
     && find /usr/local/lib/python*/site-packages -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true \

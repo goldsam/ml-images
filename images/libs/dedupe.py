@@ -7,6 +7,8 @@ files), and triton bundles its own CUPTI/nvperf next to the copies already in
 nvidia/. Hardlinking byte-identical files keeps every path working while storing
 the bytes once.
 
+Usage: dedupe.py [LIB_DIR ...]   (defaults to /usr/local/lib)
+
 Must run in the same layer as the install: layers are additive, so reclaiming
 space in a later layer reclaims nothing.
 """
@@ -20,7 +22,14 @@ MIN_SIZE = 1024 * 1024
 
 
 def main() -> int:
-    roots = sorted(glob.glob("/usr/local/lib/python3.*/site-packages"))
+    if len(sys.argv) > 1:
+        roots = sorted(
+            d
+            for base in sys.argv[1:]
+            for d in glob.glob(os.path.join(base, "python3.*", "site-packages"))
+        ) or [d for d in sys.argv[1:] if os.path.isdir(d)]
+    else:
+        roots = sorted(glob.glob("/usr/local/lib/python3.*/site-packages"))
     if not roots:
         print("dedupe: no site-packages found", file=sys.stderr)
         return 0

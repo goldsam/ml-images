@@ -4,9 +4,10 @@
 
 variable "REGISTRY"     { default = "ghcr.io/" }
 variable "IMAGE_PREFIX" { default = "goldsam/ml" }
-# The CUDA variant lives in the tag: this branch publishes :cuda-12,
-# the cuda-13 branch publishes :cuda-13, main publishes :latest.
-variable "VERSION"      { default = "cuda-12" }
+# The CUDA variant lives in the tag, derived from the git ref rather than
+# hardcoded here: release/cuda-12 -> :cuda-12, main -> :latest. verify.sh and
+# CI both compute it (see image-tag.sh and the workflow's Determine tag step).
+variable "VERSION"      { default = "latest" }
 variable "PLATFORMS"    { default = "linux/amd64" }
 
 # PyTorch build to install in ml-libs. This is the single source of CUDA in the
@@ -22,6 +23,7 @@ variable "GIT_REPO_URL" { default = "" }
 # Docker/buildx parameters
 variable "CONTEXT_BASE"   { default = "images" }
 variable "PYTHON_VERSION" { default = "3.14" }
+variable "GARAGE_VERSION" { default = "v2.4.1" }
 variable "CACHE_PATH"     { default = ".buildx-cache" }
 variable "CACHE_TYPE"     { default = "local" }
 variable "CACHE_REGISTRY" { default = "${REGISTRY}" }
@@ -148,6 +150,7 @@ target "devcontainer" {
   inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/devcontainer"
   dockerfile = "Dockerfile"
+  args = { GARAGE_VERSION = "${GARAGE_VERSION}" }
   contexts = {
     libs-image         = "target:libs"
     docker-tools-image = "target:docker-tools"

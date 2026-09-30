@@ -83,6 +83,28 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         jq
 
 #
+# Garage CLI -- S3-compatible object storage admin, replacing MinIO's `mc`.
+# Used to create buckets and S3 keys against a Garage server (e.g. the MLflow
+# artifact store), via `garage bucket create` / `garage key create`.
+#
+# A single static musl binary, so it needs no runtime dependencies. Garage
+# publishes no checksum alongside the download, so the digest below is pinned
+# from the bytes that were actually tested -- bump both together.
+#
+ARG GARAGE_VERSION=v2.4.1
+ARG GARAGE_SHA256=ae49f8de4aaee6b5ca305f7cbdccc8cd8a29b2804aac074649f18bfb83d0a2b6
+RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=garage-downloads \
+    set -ex \
+    && CACHED="/tmp/downloads/garage-${GARAGE_VERSION}" \
+    && if [ ! -f "$CACHED" ]; then \
+         curl -fsSL -o "$CACHED" \
+           "https://garagehq.deuxfleurs.fr/_releases/${GARAGE_VERSION}/x86_64-unknown-linux-musl/garage"; \
+       fi \
+    && echo "${GARAGE_SHA256}  ${CACHED}" | sha256sum -c - \
+    && install -m 0755 "$CACHED" /usr/local/bin/garage \
+    && garage --version
+
+#
 # Development-only Python packages (JupyterLab etc). Last layer: changes here
 # rebuild ~200MB, not the 3GB CUDA stack underneath.
 #

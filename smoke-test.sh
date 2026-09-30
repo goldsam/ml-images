@@ -130,9 +130,11 @@ docker --version >/dev/null || fail "docker CLI missing"
 docker buildx version >/dev/null || fail "buildx plugin missing"
 docker compose version >/dev/null || fail "compose plugin missing"
 dotnet --version >/dev/null || fail ".NET SDK missing"
+garage --version >/dev/null 2>&1 || fail "garage CLI missing"
+s3cmd --version >/dev/null 2>&1 || fail "s3cmd missing"
 jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
-ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), s3cmd $(s3cmd --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
 # Projects must be able to make their own environment without reinstalling the
 # multi-GB CUDA stack. This only works if the image installs into the BASE

@@ -7,8 +7,11 @@
 #   ./smoke/run.sh [--dev IMAGE] [--runtime IMAGE] [--gpu]
 set -euo pipefail
 
-DEV_IMAGE="ghcr.io/goldsam/ml-devcontainer:latest"
-RUNTIME_IMAGE="ghcr.io/goldsam/ml-dotnet-runtime:latest"
+# Default to the tag this git ref would publish, so the test never silently
+# runs against a stale :latest from another variant.
+TAG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && ./image-tag.sh)"
+DEV_IMAGE="ghcr.io/goldsam/ml-devcontainer:${TAG}"
+RUNTIME_IMAGE="ghcr.io/goldsam/ml-dotnet-runtime:${TAG}"
 GPU=false
 
 while [ $# -gt 0 ]; do

@@ -12,6 +12,11 @@ GPU=()
 mkdir -p .buildx-cache
 export CACHE_PATH="$PWD/.buildx-cache"
 
+# Tag matches what CI would publish for this ref, so local and published
+# images never disagree about which variant they are.
+export VERSION="${VERSION:-$(./image-tag.sh)}"
+echo "ref $(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?') -> building :$VERSION"
+
 echo "=== 1/3  build ==="
 docker buildx bake --allow=fs="$CACHE_PATH" -f docker-bake.hcl --load all
 

@@ -131,10 +131,17 @@ docker buildx version >/dev/null || fail "buildx plugin missing"
 docker compose version >/dev/null || fail "compose plugin missing"
 dotnet --version >/dev/null || fail ".NET SDK missing"
 garage --version >/dev/null 2>&1 || fail "garage CLI missing"
-s3cmd --version >/dev/null 2>&1 || fail "s3cmd missing"
+aws --version >/dev/null 2>&1 || fail "aws CLI missing"
+# presign is a fully offline exercise of the s3 model, endpoint resolution and
+# sigv4 -- it catches a botched install without needing a live S3 endpoint.
+AWS_ACCESS_KEY_ID=smoke AWS_SECRET_ACCESS_KEY=smoke AWS_DEFAULT_REGION=garage \
+    aws s3 presign s3://bucket/key --endpoint-url http://garage:3900 >/dev/null 2>&1 \
+    || fail "aws s3 is unusable"
+# Needs groff on PATH, which nothing else in the image graph installs.
+aws s3 cp help >/dev/null 2>&1 || fail "aws help cannot render -- is groff-base installed?"
 jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
-ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), s3cmd $(s3cmd --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
 # Projects must be able to make their own environment without reinstalling the
 # multi-GB CUDA stack. This only works if the image installs into the BASE

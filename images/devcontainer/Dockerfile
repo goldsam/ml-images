@@ -2,6 +2,53 @@
 FROM docker-tools-image AS docker-tools
 FROM dotnet-sdk-image  AS dotnet-sdk
 
+#
+# AWS CLI v2. The official installer unpacks to ~274MB, of which 64MB is debug
+# symbols in the bundled interpreter and its extension modules:
+#
+#   42MB  libpython3.14.so.1.0   -> 6MB stripped
+#   39MB  python3.14/lib-dynload -> 18MB stripped
+#   12MB  _awscrt.abi3.so        -> 6MB stripped
+#
+# Stripping those is the one size win with no functional surface: nothing in the
+# CLI reads a symbol table, so no command can fail because it is gone. The rest
+# of the installer stays as AWS ships it -- every service model, all `help`
+# examples, shell completion. Pruning service models would take this to 49MB,
+# but it breaks `aws <other-service>` and, less obviously, any SSO-based
+# credential profile, months later and with a confusing error. Not worth 1.5% of
+# a 7GB image.
+#
+# Done in a throwaway stage so the zip and the pre-strip tree never reach a
+# final layer.
+#
+# AWS publishes awscli-exe-linux-x86_64-<version>.zip.sig (PGP) alongside the
+# download; pinning the sha256 of the bytes that were actually tested is
+# stricter, so bump the two together.
+#
+FROM libs-image AS aws-cli-build
+ARG AWSCLI_VERSION=2.37.7
+ARG AWSCLI_SHA256=7fccf7854f9f02ad81d6fc28e01098bdf48c72d1aa931eeb36784b8893e0ae14
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked,id=apt-lists \
+    --mount=type=cache,target=/tmp/downloads,sharing=locked,id=awscli-downloads \
+    set -ex \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends unzip binutils \
+    && CACHED="/tmp/downloads/awscli-${AWSCLI_VERSION}.zip" \
+    && if [ ! -f "$CACHED" ]; then \
+         curl -fsSL -o "$CACHED" \
+           "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWSCLI_VERSION}.zip"; \
+       fi \
+    && echo "${AWSCLI_SHA256}  ${CACHED}" | sha256sum -c - \
+    && unzip -q "$CACHED" -d /tmp/awscli \
+    && mv /tmp/awscli/aws/dist /opt/aws-cli \
+    # Not the `aws` launcher itself: it is a PyInstaller bootloader with the
+    # application archive appended, which strip would corrupt.
+    && find /opt/aws-cli \( -name '*.so' -o -name '*.so.*' \) -print \
+        | xargs -r strip --strip-unneeded \
+    && rm -rf /tmp/awscli \
+    && du -sh /opt/aws-cli
+
 # Full development environment: the ML/ONNX stack plus .NET, Docker CLI and
 # Jupyter. Everything needed to build AND test an ONNX-targeting C# app.
 FROM libs-image
@@ -72,6 +119,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         gh \
         "$(apt-cache search --names-only '^libicu[0-9]+$' | sort -Vr | head -1 | cut -d' ' -f1)" \
         git \
+        # `aws help` and `aws <cmd> --help` render through a man formatter; with
+        # no groff on PATH every help page dies on "Could not find executable
+        # named groff or mandoc". Nothing else in the image graph pulls one in.
+        groff-base \
         make \
         openssh-client \
         less \
@@ -103,6 +154,17 @@ RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=garage-downloads 
     && echo "${GARAGE_SHA256}  ${CACHED}" | sha256sum -c - \
     && install -m 0755 "$CACHED" /usr/local/bin/garage \
     && garage --version
+
+#
+# AWS CLI v2 (see the aws-cli-build stage). Covers the object operations
+# Garage's own CLI does not -- `aws s3 cp`/`ls`/`sync` against the S3 API, where
+# `garage bucket`/`garage key` only administer the server:
+#   aws --endpoint-url http://garage:3900 s3 ls
+#
+COPY --from=aws-cli-build /opt/aws-cli /opt/aws-cli
+RUN set -ex \
+    && ln -s /opt/aws-cli/aws /usr/local/bin/aws \
+    && aws --version
 
 #
 # Development-only Python packages (JupyterLab etc). Last layer: changes here

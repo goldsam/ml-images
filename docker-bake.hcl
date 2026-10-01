@@ -24,6 +24,7 @@ variable "GIT_REPO_URL" { default = "" }
 variable "CONTEXT_BASE"   { default = "images" }
 variable "PYTHON_VERSION" { default = "3.14" }
 variable "GARAGE_VERSION" { default = "v2.4.1" }
+variable "AWSCLI_VERSION" { default = "2.37.7" }
 variable "CACHE_PATH"     { default = ".buildx-cache" }
 variable "CACHE_TYPE"     { default = "local" }
 variable "CACHE_REGISTRY" { default = "${REGISTRY}" }
@@ -150,7 +151,10 @@ target "devcontainer" {
   inherits   = ["cuda-base"]
   context    = "${CONTEXT_BASE}/devcontainer"
   dockerfile = "Dockerfile"
-  args = { GARAGE_VERSION = "${GARAGE_VERSION}" }
+  args = {
+    GARAGE_VERSION = "${GARAGE_VERSION}"
+    AWSCLI_VERSION = "${AWSCLI_VERSION}"
+  }
   contexts = {
     libs-image         = "target:libs"
     docker-tools-image = "target:docker-tools"

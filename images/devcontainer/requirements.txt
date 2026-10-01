@@ -10,8 +10,3 @@ ipywidgets>=8.1
 matplotlib>=3.11
 # Code quality
 mypy>=2.3
-
-# S3 client for object operations against Garage (the `mc cp` / `mc ls` half of
-# what MinIO's client did). Garage's own CLI only manages buckets and keys.
-#   s3cmd --host=garage:3900 --host-bucket='%(bucket)s.garage:3900' ls
-s3cmd>=2.4

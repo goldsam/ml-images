@@ -106,6 +106,14 @@ ENV DOCKER_BUILDKIT=1
 #
 # Interactive dev tooling
 #
+# PostgreSQL client comes from PGDG rather than Ubuntu's archive: noble pins
+# postgresql-client-16, and psql/pg_dump refuse to dump from a server newer than
+# themselves. Pinning the major here instead means the client can be moved
+# forward independently of the base distro. `psql` itself is the
+# postgresql-client-common wrapper, so /usr/bin/psql resolves whatever major is
+# installed.
+#
+ARG POSTGRES_CLIENT_MAJOR=18
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-cache \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked,id=devcontainer-apt-lists \
     set -ex \
@@ -114,9 +122,18 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
         > /etc/apt/sources.list.d/github-cli.list \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+        | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/postgresql-archive-keyring.gpg \
+    # . /etc/os-release, not `lsb_release -cs`: lsb-release is installed by the
+    # very apt-get below, so it does not exist yet at this point in the layer.
+    && . /etc/os-release \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+        > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         gh \
+        "postgresql-client-${POSTGRES_CLIENT_MAJOR}" \
         "$(apt-cache search --names-only '^libicu[0-9]+$' | sort -Vr | head -1 | cut -d' ' -f1)" \
         git \
         # `aws help` and `aws <cmd> --help` render through a man formatter; with
@@ -131,7 +148,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         lsb-release \
         vim \
         nano \
-        jq
+        jq \
+    && psql --version
 
 #
 # Garage CLI -- S3-compatible object storage admin, replacing MinIO's `mc`.

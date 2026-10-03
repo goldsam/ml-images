@@ -20,7 +20,7 @@ graph TD
         base["<b>base</b><br/>python:3.14-slim + tini<br/><i>0.14 GB</i>"]
         mllibs["<b>ml-libs</b><br/>PyTorch (TORCH_CUDA) · numpy/pandas/scipy/sklearn<br/>gymnasium · stable-baselines3 · mlflow-skinny<br/><b>sole source of CUDA</b> · pins /opt/torch-constraints.txt<br/><i>5.58 GB</i>"]
         gpuml["<b>gpu-ml</b><br/>+ transformers · datasets<br/><i>5.83 GB</i>"]
-        devc["<b>devcontainer</b><br/>+ JupyterLab · matplotlib · mypy · gh<br/>garage CLI · AWS CLI v2<br/>vscode user (non-root)<br/><i>7.12 GB</i>"]
+        devc["<b>devcontainer</b><br/>+ JupyterLab · matplotlib · mypy · gh<br/>garage CLI · AWS CLI v2 · psql<br/>vscode user (non-root)<br/><i>7.12 GB</i>"]
         dotnetsdk["<b>dotnet-sdk</b><br/><i>assets image</i><br/>.NET SDK 10<br/><i>0.78 GB</i>"]
         dockertools["<b>docker-tools</b><br/><i>assets image</i><br/>docker CLI · buildx · compose<br/><i>0.29 GB</i>"]
 

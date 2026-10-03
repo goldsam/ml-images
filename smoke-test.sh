@@ -143,6 +143,23 @@ jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
 ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
+echo "[postgres client]"
+psql --version >/dev/null 2>&1 || fail "psql missing"
+for b in pg_dump pg_restore pg_isready; do
+    command -v "$b" >/dev/null 2>&1 || fail "$b missing"
+done
+# Ubuntu's own postgresql-client is 16, and pg_dump refuses to read a server
+# newer than itself -- so guard that the client really came from PGDG.
+PG_MAJOR=$(psql --version | grep -oE '[0-9]+' | head -1)
+[ "${PG_MAJOR:-0}" -ge 17 ] || fail "psql is $PG_MAJOR; expected 17+ from apt.postgresql.org, not Ubuntu's 16"
+# Offline exercise of libpq, in the spirit of `aws s3 presign`: connecting to a
+# closed local port must reach the "no response" verdict (exit 2) rather than
+# failing to start. A missing/mislinked libpq.so shows up as 127 or 3 instead.
+PG_RC=0
+pg_isready -q -h 127.0.0.1 -p 1 -t 2 >/dev/null 2>&1 || PG_RC=$?
+[ "$PG_RC" -eq 2 ] || fail "pg_isready against a closed port returned $PG_RC, expected 2 (no response)"
+ok "psql $(psql --version | awk '{print $3}') with pg_dump/pg_restore/pg_isready, libpq usable"
+
 # Projects must be able to make their own environment without reinstalling the
 # multi-GB CUDA stack. This only works if the image installs into the BASE
 # interpreter -- a venv cannot inherit another venv's site-packages.

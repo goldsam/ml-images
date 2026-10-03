@@ -25,6 +25,9 @@ variable "CONTEXT_BASE"   { default = "images" }
 variable "PYTHON_VERSION" { default = "3.14" }
 variable "GARAGE_VERSION" { default = "v2.4.1" }
 variable "AWSCLI_VERSION" { default = "2.37.7" }
+# PostgreSQL client major, from apt.postgresql.org. Ubuntu 24.04 only offers
+# 16, and pg_dump refuses to read a server newer than itself.
+variable "POSTGRES_CLIENT_MAJOR" { default = "18" }
 variable "CACHE_PATH"     { default = ".buildx-cache" }
 variable "CACHE_TYPE"     { default = "local" }
 variable "CACHE_REGISTRY" { default = "${REGISTRY}" }
@@ -152,8 +155,9 @@ target "devcontainer" {
   context    = "${CONTEXT_BASE}/devcontainer"
   dockerfile = "Dockerfile"
   args = {
-    GARAGE_VERSION = "${GARAGE_VERSION}"
-    AWSCLI_VERSION = "${AWSCLI_VERSION}"
+    GARAGE_VERSION        = "${GARAGE_VERSION}"
+    AWSCLI_VERSION        = "${AWSCLI_VERSION}"
+    POSTGRES_CLIENT_MAJOR = "${POSTGRES_CLIENT_MAJOR}"
   }
   contexts = {
     libs-image         = "target:libs"

@@ -185,6 +185,27 @@ RUN set -ex \
     && aws --version
 
 #
+# Session Manager plugin -- what `aws ssm start-session` execs to open a shell
+# or port-forward through SSM, without which it fails with "SessionManagerPlugin
+# is not found". AWS ships it as a .deb whose postinst only symlinks the binary
+# into /usr/local/bin; the bundled systemd unit is inert in a container. AWS
+# publishes no checksum, so the digest is pinned from the bytes that were
+# actually tested -- bump both together.
+#
+ARG SSM_PLUGIN_VERSION=1.2.835.0
+ARG SSM_PLUGIN_SHA256=7c6dcad12518571cc7959a713e6a8ae1bdf6ed66fd9bee37dc189e39ca58ae03
+RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=ssm-plugin-downloads \
+    set -ex \
+    && CACHED="/tmp/downloads/session-manager-plugin-${SSM_PLUGIN_VERSION}.deb" \
+    && if [ ! -f "$CACHED" ]; then \
+         curl -fsSL -o "$CACHED" \
+           "https://s3.amazonaws.com/session-manager-downloads/plugin/${SSM_PLUGIN_VERSION}/ubuntu_64bit/session-manager-plugin.deb"; \
+       fi \
+    && echo "${SSM_PLUGIN_SHA256}  ${CACHED}" | sha256sum -c - \
+    && dpkg -i "$CACHED" \
+    && session-manager-plugin --version
+
+#
 # Development-only Python packages (JupyterLab etc). Last layer: changes here
 # rebuild ~200MB, not the 3GB CUDA stack underneath.
 #

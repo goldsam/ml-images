@@ -143,6 +143,44 @@ jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
 ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
+echo "[session manager plugin]"
+session-manager-plugin --version >/dev/null 2>&1 || fail "session-manager-plugin missing"
+# `aws ssm start-session` calls the StartSession API first and only then looks
+# for the plugin, so a bare --version check would not prove the CLI can find
+# it. Answer StartSession from a local stub instead: the CLI must hand the
+# session to the plugin, which announces it before failing to reach the fake
+# StreamUrl (it then retries, hence the timeout). A missing plugin shows up as
+# "SessionManagerPlugin is not found" instead.
+SSM_PORT_FILE=$(mktemp)
+python3 - "$SSM_PORT_FILE" <<'PY' &
+import http.server, json, sys
+class StartSession(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        body = json.dumps({"SessionId": "smoke-0", "TokenValue": "smoke",
+                           "StreamUrl": "ws://127.0.0.1:1/smoke"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-amz-json-1.1")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *args): pass
+server = http.server.HTTPServer(("127.0.0.1", 0), StartSession)
+open(sys.argv[1], "w").write(str(server.server_port))
+server.serve_forever()
+PY
+SSM_STUB_PID=$!
+for _ in $(seq 50); do [ -s "$SSM_PORT_FILE" ] && break; sleep 0.1; done
+[ -s "$SSM_PORT_FILE" ] || fail "StartSession stub did not start"
+SSM_OUT=$(AWS_ACCESS_KEY_ID=smoke AWS_SECRET_ACCESS_KEY=smoke AWS_DEFAULT_REGION=us-east-1 \
+    timeout 10 aws ssm start-session --target i-0 \
+        --endpoint-url "http://127.0.0.1:$(cat "$SSM_PORT_FILE")" </dev/null 2>&1 || true)
+kill "$SSM_STUB_PID" 2>/dev/null || true
+rm -f "$SSM_PORT_FILE"
+grep -q "Starting session with SessionId: smoke-0" <<<"$SSM_OUT" \
+    || fail "aws ssm start-session did not reach the plugin: $SSM_OUT"
+ok "session-manager-plugin $(session-manager-plugin --version), reachable from aws ssm start-session"
+
 echo "[postgres client]"
 psql --version >/dev/null 2>&1 || fail "psql missing"
 for b in pg_dump pg_restore pg_isready; do

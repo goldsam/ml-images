@@ -159,6 +159,16 @@ LFS_DIR=$(mktemp -d)
 rm -rf "$LFS_DIR"
 ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, ar, git-lfs $(git lfs version | grep -oE '[0-9]+\.[0-9.]+' | head -1), garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
+echo "[system libgomp]"
+# torch/lib and scikit_learn.libs carry their own copies; this must resolve the
+# system one by soname, as any other native library linking -lgomp would.
+python3 -c '
+import ctypes
+gomp = ctypes.CDLL("libgomp.so.1")
+assert gomp.omp_get_max_threads() >= 1
+' || fail "libgomp.so.1 does not resolve from the system -- is libgomp1 installed?"
+ok "libgomp.so.1 loads and reports $(python3 -c 'import ctypes; print(ctypes.CDLL("libgomp.so.1").omp_get_max_threads())') OpenMP threads"
+
 echo "[session manager plugin]"
 session-manager-plugin --version >/dev/null 2>&1 || fail "session-manager-plugin missing"
 # `aws ssm start-session` calls the StartSession API first and only then looks

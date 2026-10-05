@@ -72,6 +72,10 @@ set -euo pipefail
 echo "--- runtime image contents ---"
 dotnet --list-runtimes | sed "s/^/  /"
 echo "  SDKs installed: $(dotnet --list-sdks | wc -l) (expect 0)"
+# Native dependencies of deployed apps may link the OpenMP runtime.
+ldconfig -p | grep -q "libgomp.so.1 " \
+    || { echo "ERROR: libgomp.so.1 missing from the runtime image" >&2; exit 1; }
+echo "  libgomp.so.1 present"
 echo "--- running consumer ---"
 cd /out/app && exec dotnet OnnxSmoke.dll /out/model.onnx
 '

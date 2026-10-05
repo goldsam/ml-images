@@ -18,6 +18,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache \
         ca-certificates \
         curl \
         gnupg \
+        # GNU OpenMP runtime, for native code that links libgomp.so.1 from the
+        # system. torch and scikit-learn bundle private copies that nothing else
+        # can resolve, so without this the loader fails at dlopen time.
+        libgomp1 \
         tini \
         tzdata
 

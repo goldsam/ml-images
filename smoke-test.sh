@@ -141,7 +141,13 @@ AWS_ACCESS_KEY_ID=smoke AWS_SECRET_ACCESS_KEY=smoke AWS_DEFAULT_REGION=garage \
 aws s3 cp help >/dev/null 2>&1 || fail "aws help cannot render -- is groff-base installed?"
 jupyter --version >/dev/null || fail "jupyter missing"
 gh --version >/dev/null || fail "gh missing"
-ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
+# Round-trip a member through an archive rather than just --version.
+AR_DIR=$(mktemp -d)
+echo smoke > "$AR_DIR/member"
+(cd "$AR_DIR" && ar rc smoke.a member && [ "$(ar t smoke.a)" = member ] && [ "$(ar p smoke.a member)" = smoke ]) \
+    || fail "ar cannot create and read an archive -- is binutils installed?"
+rm -rf "$AR_DIR"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, ar, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
 echo "[session manager plugin]"
 session-manager-plugin --version >/dev/null 2>&1 || fail "session-manager-plugin missing"

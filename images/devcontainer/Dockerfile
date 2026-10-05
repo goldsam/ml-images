@@ -136,6 +136,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         "postgresql-client-${POSTGRES_CLIENT_MAJOR}" \
         "$(apt-cache search --names-only '^libicu[0-9]+$' | sort -Vr | head -1 | cut -d' ' -f1)" \
         git \
+        # ar (plus objdump/nm/readelf/strip) for inspecting .deb archives and
+        # native libraries; the runtime images deliberately leave it out.
+        binutils \
         # `aws help` and `aws <cmd> --help` render through a man formatter; with
         # no groff on PATH every help page dies on "Could not find executable
         # named groff or mandoc". Nothing else in the image graph pulls one in.

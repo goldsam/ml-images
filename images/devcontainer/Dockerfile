@@ -136,6 +136,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         "postgresql-client-${POSTGRES_CLIENT_MAJOR}" \
         "$(apt-cache search --names-only '^libicu[0-9]+$' | sort -Vr | head -1 | cut -d' ' -f1)" \
         git \
+        git-lfs \
         # ar (plus objdump/nm/readelf/strip) for inspecting .deb archives and
         # native libraries; the runtime images deliberately leave it out.
         binutils \
@@ -152,7 +153,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=devcontainer-apt-
         vim \
         nano \
         jq \
-    && psql --version
+    && psql --version \
+    # Filters go in /etc/gitconfig, not root's ~/.gitconfig, so they apply to
+    # the vscode user and to repos bind-mounted from the host.
+    && git lfs install --system \
+    && git lfs version
 
 #
 # Garage CLI -- S3-compatible object storage admin, replacing MinIO's `mc`.

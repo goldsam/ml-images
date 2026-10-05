@@ -147,7 +147,17 @@ echo smoke > "$AR_DIR/member"
 (cd "$AR_DIR" && ar rc smoke.a member && [ "$(ar t smoke.a)" = member ] && [ "$(ar p smoke.a member)" = smoke ]) \
     || fail "ar cannot create and read an archive -- is binutils installed?"
 rm -rf "$AR_DIR"
-ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, ar, garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
+git lfs version >/dev/null 2>&1 || fail "git-lfs missing"
+# Commit a tracked file and require the blob to be an LFS pointer: proves the
+# clean filter is registered for this (non-root) user, not just installed.
+LFS_DIR=$(mktemp -d)
+(cd "$LFS_DIR" && git init -q && git lfs track '*.bin' >/dev/null \
+    && head -c 1024 /dev/urandom > blob.bin && git add .gitattributes blob.bin \
+    && git -c user.name=smoke -c user.email=smoke@localhost commit -qm smoke \
+    && git cat-file -p HEAD:blob.bin | grep -q '^version https://git-lfs') \
+    || fail "git-lfs filters are not active -- was 'git lfs install --system' run?"
+rm -rf "$LFS_DIR"
+ok "docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1), buildx, compose, dotnet $(dotnet --version), jupyter, gh, ar, git-lfs $(git lfs version | grep -oE '[0-9]+\.[0-9.]+' | head -1), garage $(garage --version | grep -oE 'v[0-9.]+' | head -1), aws $(aws --version | grep -oE '[0-9]+\.[0-9.]+' | head -1)"
 
 echo "[session manager plugin]"
 session-manager-plugin --version >/dev/null 2>&1 || fail "session-manager-plugin missing"

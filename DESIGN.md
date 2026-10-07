@@ -52,7 +52,7 @@ graph TD
 
     libs["<b>libs</b><br/>PyTorch <i>--no-deps</i> (links system CUDA)<br/>onnxruntime-gpu · numpy/pandas/scipy/sklearn<br/>gymnasium · stable-baselines3 · mlflow-skinny<br/>transformers · datasets<br/><i>~4.6 GB</i>"]
 
-    devc["<b>devcontainer</b><br/>+ .NET SDK 10 · Docker CLI/buildx/compose<br/>+ JupyterLab · matplotlib · mypy · gh<br/>garage CLI · AWS CLI v2 + SSM plugin · psql<br/>vscode user (non-root)<br/><i>~6.0 GB</i>"]
+    devc["<b>devcontainer</b><br/>+ .NET SDK 10 · Docker CLI/buildx/compose<br/>+ JupyterLab · matplotlib · mypy · gh<br/>garage CLI · AWS CLI v2 + SSM plugin · psql<br/>Node.js 24 LTS<br/>vscode user (non-root)<br/><i>~6.0 GB</i>"]
 
     dotnetrt["<b>dotnet-runtime</b><br/>ASP.NET Core 10 runtime · no SDK<br/>ORT native libs arrive via app publish output<br/>app user (non-root)<br/><i>~3.5 GB</i>"]
 

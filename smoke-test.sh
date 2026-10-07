@@ -169,6 +169,30 @@ assert gomp.omp_get_max_threads() >= 1
 ' || fail "libgomp.so.1 does not resolve from the system -- is libgomp1 installed?"
 ok "libgomp.so.1 loads and reports $(python3 -c 'import ctypes; print(ctypes.CDLL("libgomp.so.1").omp_get_max_threads())') OpenMP threads"
 
+echo "[node]"
+node --version >/dev/null 2>&1 || fail "node missing"
+npm --version >/dev/null 2>&1 || fail "npm missing"
+[ "$(node -p 'process.versions.node.split(".")[0]')" -ge 24 ] || fail "node is $(node --version); expected 24+"
+[ "$(node -e 'console.log(require("crypto").createHash("sha256").update("smoke").digest("hex").slice(0, 8))')" = 04d588cb ] \
+    || fail "node cannot run a script with its standard library"
+# Offline npm: pack a local package, then install the tarball both into a
+# project and globally. The global install must land in the user-owned prefix
+# and its bin must be on PATH, without sudo.
+NPM_DIR=$(mktemp -d)
+(cd "$NPM_DIR" && mkdir pkg app \
+    && printf '%s' '{"name":"npm-smoke","version":"1.0.0","bin":{"npm-smoke":"cli.js"}}' > pkg/package.json \
+    && printf '#!/usr/bin/env node\nconsole.log("npm-smoke ok")\n' > pkg/cli.js \
+    && TARBALL="$NPM_DIR/$(cd pkg && npm pack --silent --pack-destination "$NPM_DIR")" \
+    && cd app && npm init -y >/dev/null && npm install --offline --no-audit --no-fund --silent "$TARBALL" \
+    && [ "$(npx --offline --no-install npm-smoke)" = "npm-smoke ok" ] \
+    && npm install -g --offline --no-audit --no-fund --silent "$TARBALL" \
+    && [ "$(command -v npm-smoke)" = "$HOME/.npm-global/bin/npm-smoke" ] \
+    && [ "$(npm-smoke)" = "npm-smoke ok" ] \
+    && npm uninstall -g --silent npm-smoke) \
+    || fail "npm cannot pack/install offline, or global installs do not land in ~/.npm-global/bin on PATH"
+rm -rf "$NPM_DIR"
+ok "node $(node --version), npm $(npm --version), global prefix $(npm prefix -g)"
+
 echo "[session manager plugin]"
 session-manager-plugin --version >/dev/null 2>&1 || fail "session-manager-plugin missing"
 # `aws ssm start-session` calls the StartSession API first and only then looks

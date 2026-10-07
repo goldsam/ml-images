@@ -214,6 +214,37 @@ RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=ssm-plugin-downlo
     && session-manager-plugin --version
 
 #
+# Node.js LTS, from the official nodejs.org tarball rather than NodeSource's apt
+# repo: as its own layer a Node bump rebuilds only this and the pip layer, not
+# the apt layer above. Unpacked as shipped (include/ stays, for node-gyp). The
+# digest is the one nodejs.org publishes in SHASUMS256.txt -- bump both together.
+#
+# The global npm prefix points into the user's home, so `npm i -g` works as
+# vscode without sudo. ${HOME} is expanded by npm at read time, so root gets
+# its own prefix rather than writing into vscode's.
+#
+ARG NODE_VERSION=24.21.0
+ARG NODE_SHA256=6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff
+RUN --mount=type=cache,target=/tmp/downloads,sharing=locked,id=node-downloads \
+    set -ex \
+    && CACHED="/tmp/downloads/node-v${NODE_VERSION}-linux-x64.tar.gz" \
+    && if [ ! -f "$CACHED" ]; then \
+         curl -fsSL -o "$CACHED" \
+           "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz"; \
+       fi \
+    && echo "${NODE_SHA256}  ${CACHED}" | sha256sum -c - \
+    && mkdir -p /opt/node \
+    && tar -xzf "$CACHED" -C /opt/node --strip-components=1 --no-same-owner \
+    && mkdir -p /opt/node/etc \
+    && echo 'prefix=${HOME}/.npm-global' > /opt/node/etc/npmrc \
+    # Symlinked like dotnet and aws, so login shells and `sudo` (whose
+    # secure_path drops ENV PATH) still find them.
+    && for b in node npm npx corepack; do ln -s "/opt/node/bin/$b" /usr/local/bin/; done \
+    && echo 'export PATH="$HOME/.npm-global/bin:$PATH"' > /etc/profile.d/npm-global.sh \
+    && npm --version
+ENV PATH="/home/vscode/.npm-global/bin:$PATH"
+
+#
 # Development-only Python packages (JupyterLab etc). Last layer: changes here
 # rebuild ~200MB, not the 3GB CUDA stack underneath.
 #

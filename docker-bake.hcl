@@ -26,6 +26,7 @@ variable "PYTHON_VERSION" { default = "3.14" }
 variable "GARAGE_VERSION" { default = "v2.4.1" }
 variable "AWSCLI_VERSION" { default = "2.37.7" }
 variable "SSM_PLUGIN_VERSION" { default = "1.2.835.0" }
+variable "NODE_VERSION" { default = "24.21.0" }
 # PostgreSQL client major, from apt.postgresql.org. Ubuntu 24.04 only offers
 # 16, and pg_dump refuses to read a server newer than itself.
 variable "POSTGRES_CLIENT_MAJOR" { default = "18" }
@@ -159,6 +160,7 @@ target "devcontainer" {
     GARAGE_VERSION        = "${GARAGE_VERSION}"
     AWSCLI_VERSION        = "${AWSCLI_VERSION}"
     SSM_PLUGIN_VERSION    = "${SSM_PLUGIN_VERSION}"
+    NODE_VERSION          = "${NODE_VERSION}"
     POSTGRES_CLIENT_MAJOR = "${POSTGRES_CLIENT_MAJOR}"
   }
   contexts = {
